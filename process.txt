@@ -1,0 +1,37 @@
+cd path/to/your/local/folder
+git init 
+git branch -M main
+git add .
+git commit -m "First commit"
+git remote add origin <repository-url> (sometimes u need to force it to point to this repo , if worked on other previously)
+git push -u origin main
+
+
+
+
+-------------------
+DVC -
+pip install dvc (on your system or cmd or powershell)
+python.exe -m pip install --upgrade pip 
+dvc init or python -m dvc init
+//Ask it ot track folders
+python -m dvc add data/
+python -m dvc add models/
+
+//Tell DVC nad GIT
+git add src/ notebooks/ data.dvc models.dvc .gitignore
+
+-> then commit 
+
+//Linking 
+# Install the Google Drive DVC extension
+pip install "dvc[gdrive]" (on powershell)
+
+# Link the folder ID you copied(in the main repo)
+python -m dvc remote add -d myremote gdrive://1A2B3C4D5E6F...
+
+# Push your data
+python -m dvc push
+
+[To boost Github's capacity of code commits : git config --global http.postBuffer 524288000]
+
