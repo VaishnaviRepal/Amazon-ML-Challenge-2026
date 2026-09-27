@@ -2063,4 +2063,213 @@ If it doesn't, we shouldn't assume that "more complicated = better."
 
 
 =========================================
-### Phase 7 : 
+==========================================
+### Phase 7 : Finalizing the Threshold :
+They are **not supposed to be doing the same thing**. The confusion is because **Phase 5 may look at a default threshold while evaluating the baseline**, whereas **Phase 7 is specifically responsible for selecting the final threshold**.
+
+**** Implementation Results : 
+• The threshold evaluation is running on the held-out Source‑1 entities only. It will produce the pair-level error
+  counts and zero/one/multiple-match entity counts for every evaluated threshold.
+
+• Ran python -m src.vaishnavi.tune_threshold
+  └ {
+      "selected_threshold": 0.68,
+    … +28 lines (ctrl + t to view transcript)
+      }
+    }
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+• Implemented and ran [tune_threshold.py](D:\Vai_Doc\Contests\Amazon ML Challenge
+  Project\src\vaishnavi\tune_threshold.py).
+
+  Saved:
+
+  - [Threshold analysis CSV](D:\Vai_Doc\Contests\Amazon ML Challenge Project\experiments\threshold_analysis.csv)
+  - [Selected threshold and rationale](D:\Vai_Doc\Contests\Amazon ML Challenge Project\models\threshold.json)
+
+  Selected threshold: 0.68
+
+  It was chosen from validation-only results using this policy: retain thresholds within 0.001 F1 of the maximum, then
+  prefer higher precision (fewer false matches), with higher threshold as a deterministic tie-breaker.
+
+  At 0.68:
+
+  - Precision: 0.9910
+  - Recall: 0.9804
+  - F1: 0.9857
+  - Predicted matches: 218,408
+  - False positives: 1,961
+  - False negatives: 4,332
+  - Source‑1 entities: 3,619 zero-match, 3,718 one-match, 56,246 multiple-match
+
+  The analysis uses the same deterministic Source‑1-group-disjoint validation set as training, with no test ground truth
+  read or used.
+  -------
+### Phase 5 — Evaluate the baseline model
+
+The main purpose is:
+
+> **How well does our baseline model work?**
+
+The flow is:
+
+```text
+Phase 4 training data
+        ↓
+Split into training + validation
+        ↓
+Train baseline model
+        ↓
+Get prediction probabilities
+        ↓
+Evaluate baseline
+        ↓
+Precision / Recall / F1 / PR-AUC
+```
+
+If the baseline produces:
+
+```text
+0.92
+0.81
+0.63
+0.27
+```
+
+we need some way to turn probabilities into Match/Not Match for metrics like precision, recall and F1.
+
+So Phase 5 may use a **default/reference threshold**, commonly `0.5`, to calculate the baseline classification metrics.
+
+The important thing is:
+
+> **Phase 5 is not trying to find the final threshold.**
+
+It is establishing the baseline.
+
+---
+
+# Phase 7 — Tune the final threshold
+
+Phase 7 asks a different question:
+
+> **Given our chosen model, what probability threshold should we use for the final matching system?**
+
+Now we deliberately try many thresholds:
+
+```text
+0.40
+0.45
+0.50
+0.55
+0.60
+0.65
+0.70
+0.75
+0.80
+...
+```
+
+For each one:
+
+```text
+threshold
+    ↓
+MATCH / NOT MATCH
+    ↓
+precision
+recall
+F1
+false positives
+false negatives
+```
+
+Then we compare the results.
+
+For example:
+
+| Threshold | Precision | Recall |   F1 |
+| --------: | --------: | -----: | ---: |
+|      0.50 |      0.88 |   0.92 | 0.90 |
+|      0.60 |      0.91 |   0.89 | 0.90 |
+|      0.70 |      0.94 |   0.84 | 0.89 |
+|      0.80 |      0.97 |   0.73 | 0.83 |
+
+These numbers are just examples.
+
+Phase 7 then documents the selected threshold for use by the final matcher.
+
+---
+
+## The easiest way to remember it
+
+### Phase 5
+
+**"How good is my baseline?"**
+
+```text
+              Baseline
+                 ↓
+          evaluate model
+                 ↓
+       "This is our reference"
+```
+
+### Phase 7
+
+**"How should I convert the final model's probability into a match?"**
+
+```text
+          Final model
+               ↓
+       try many thresholds
+               ↓
+       compare performance
+               ↓
+       select threshold
+               ↓
+       save threshold
+```
+
+---
+
+## But there's an important correction to our earlier plan
+
+If your **Phase 5 code is actually looping over many thresholds and claiming to select the best one**, then Phase 5 and Phase 7 **are overlapping**.
+
+That would be unnecessary duplication.
+
+A cleaner design is:
+
+```text
+PHASE 5
+Baseline
+  ↓
+Train + evaluate using a fixed/reference threshold
+  ↓
+Baseline metrics
+
+
+PHASE 6
+Stronger model
+  ↓
+Train + evaluate
+  ↓
+Compare against baseline
+
+
+PHASE 7
+Take the chosen/final model
+  ↓
+Systematically tune threshold
+  ↓
+Select/document threshold
+```
+
+So **Phase 5 can use a threshold to calculate classification metrics, but Phase 7 owns threshold selection.**
+
+And there's one more distinction:
+
+**Phase 6 compares models. Phase 7 tunes the decision threshold of the model we intend to use.**
+
+That separation keeps the pipeline logically clean.
