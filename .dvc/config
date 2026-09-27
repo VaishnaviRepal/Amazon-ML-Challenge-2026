@@ -1,4 +1,7 @@
 [core]
-    remote = myremote
+    remote = storage
+    autostage = true
 ['remote "myremote"']
     url = gdrive://1JSMZKdAmvjJVGlDR01qqgxjCmZO807GA
+['remote "storage"']
+    url = D:\Amazon_ML_DVC_Backup
