@@ -980,7 +980,7 @@ We use it afterward to ask:
 That's what validation measures.
 
 ---
-
+.
 # 7. So what exactly happens in Phase 5?
 
 Conceptually:
@@ -1265,3 +1265,802 @@ So F1 is a **useful criterion**, not the entire definition of a good final solut
 ### In one sentence:
 
 **`source1_entity_id` tells us which rows belong to the same Source 1 entity; `GroupShuffleSplit` keeps those entities separated between training and validation; training teaches the model, validation tests it on unseen entities; and threshold tuning converts the model's probability into a final match/not-match decision, with F1 being one important measure used to compare thresholds.**
+
+
+========================================
+### Phase 6 - > Building a stronger model 
+Yes. The key idea is that **Phase 5 and Phase 6 are not doing the same job**.
+
+* **Phase 5 = establish a simple baseline**
+* **Phase 6 = build a stronger model and see whether it actually improves over the baseline**
+* We keep both because otherwise we have no evidence that the added complexity is helping.
+
+One correction to keep in mind: the exact filenames we discussed earlier were **planned project structure**, not necessarily files that already exist in your VS Code project. So below I’ll explain what each planned file is supposed to do.
+###Implementation results : 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+• Implemented and trained the stronger supervised matcher.
+
+  Saved:
+
+  - [Tree model](D:\Vai_Doc\Contests\Amazon ML Challenge Project\models\entity_matcher.joblib)
+  - [Feature names](D:\Vai_Doc\Contests\Amazon ML Challenge Project\models\feature_names.json)
+  - [Metrics and validation methodology](D:\Vai_Doc\Contests\Amazon ML Challenge Project\experiments\model_metrics.json)
+  - [Training script](D:\Vai_Doc\Contests\Amazon ML Challenge Project\src\vaishnavi\train_model.py)
+
+  LightGBM/XGBoost were unavailable, so the implementation uses reproducible scikit-learn histogram gradient boosting
+  with balanced class weights. It uses the unchanged test-time feature contract only, and no test prediction was
+  generated.
+
+  Entity-disjoint validation: 63,583 Source‑1 entities / 445,110 pairs, with zero Source‑1 overlap.
+
+   Model                Precision    Recall        F1    PR-AUC
+  ━━━━━━━━━━━━━━━━━━━  ━━━━━━━━━━━  ━━━━━━━━  ━━━━━━━━  ━━━━━━━━
+   Logistic baseline       0.9808    0.9669    0.9738    0.9937
+  ───────────────────  ───────────  ────────  ────────  ────────
+   Gradient boosting       0.9878    0.9853    0.9866    0.9984
+
+  The boosted model improves F1 by 0.0128 and PR-AUC by 0.0047 on the same leakage-safe holdout.
+
+------------
+## 1. Phase 5 vs Phase 6
+
+### Phase 5 — Baseline
+
+We start with a relatively simple model.
+
+Conceptually:
+
+```text
+Phase 4 training data
+        ↓
+simple ML model
+        ↓
+baseline predictions
+        ↓
+precision / recall / F1 / PR-AUC
+```
+
+The purpose is:
+
+> **Establish a reference point.**
+
+For example, suppose the baseline gives:
+
+```text
+Precision = 0.89
+Recall    = 0.84
+F1        = 0.86
+```
+
+These are just illustrative numbers.
+
+Now we know:
+
+> "A simple approach gets approximately this level of performance."
+
+---
+
+# 2. Phase 6 — Stronger model
+
+Phase 6 uses the **same underlying labelled training problem**, but tries a more powerful model such as LightGBM or XGBoost.
+
+Conceptually:
+
+```text
+Phase 4 training data
+        ↓
+stronger ML model
+        ↓
+predictions
+        ↓
+precision / recall / F1 / PR-AUC
+```
+
+The important point is:
+
+**Phase 6 doesn't replace Phase 5 conceptually. It builds on it.**
+
+We want to find out whether a more sophisticated model can learn more complicated relationships between the features.
+
+For example, maybe this matters:
+
+```text
+name similarity = 0.90
+address similarity = 0.85
+phone = exact
+```
+
+versus:
+
+```text
+name similarity = 0.90
+address similarity = 0.85
+phone = completely different
+```
+
+A stronger model can potentially learn nonlinear combinations and interactions between features.
+
+---
+
+# 3. Why not just use the stronger model immediately?
+
+Because then we don't know whether the complexity is actually useful.
+
+Imagine:
+
+```text
+Baseline:
+F1 = 0.86
+
+Stronger model:
+F1 = 0.87
+```
+
+The stronger model is only slightly better.
+
+Now consider:
+
+```text
+Baseline:
+F1 = 0.86
+
+Stronger model:
+F1 = 0.94
+```
+
+That's much stronger evidence that the additional modelling complexity is worthwhile.
+
+And it could also go the other way:
+
+```text
+Baseline:
+F1 = 0.86
+
+Stronger model:
+F1 = 0.82
+```
+
+Then the complicated model isn't helping on our validation setup.
+
+So **comparison is an experiment**, not just a formality.
+
+---
+
+# 4. What does "baseline" actually mean?
+
+Baseline doesn't necessarily mean "bad model."
+
+It means:
+
+> **A simple, understandable reference implementation against which we compare improvements.**
+
+It gives us a benchmark.
+
+Without it, if our final model gets F1 = 0.86, we don't know whether that's good relative to a simple approach.
+
+---
+
+# 5. Now let's go through the folders
+
+Our planned structure was approximately:
+
+```text
+amazon-ml-challenge/
+│
+├── models/
+│
+├── experiments/
+│
+└── outputs/
+```
+
+They have **different purposes**.
+
+---
+
+# `models/`
+
+This folder contains **trained models that we may reuse for prediction**.
+
+Think:
+
+> "The learned brain."
+
+For example:
+
+```text
+models/
+├── baseline_model.joblib
+└── entity_matcher.joblib
+```
+
+### `baseline_model.joblib`
+
+Generated by Phase 5.
+
+Process:
+
+```text
+Phase 4 labelled data
+        ↓
+train baseline
+        ↓
+learn parameters
+        ↓
+baseline_model.joblib
+```
+
+It contains the trained baseline model.
+
+It does **not** contain your final `matching_results.tsv`.
+
+---
+
+### `entity_matcher.joblib`
+
+Generated by Phase 6.
+
+Process:
+
+```text
+Phase 4 labelled data
+        ↓
+train stronger model
+        ↓
+learn parameters
+        ↓
+entity_matcher.joblib
+```
+
+This is intended to be the model used later by the production matcher.
+
+So conceptually:
+
+```text
+baseline_model.joblib
+       ↓
+for comparison
+
+entity_matcher.joblib
+       ↓
+candidate for final prediction
+```
+
+---
+
+# `experiments/`
+
+This folder contains **evidence and intermediate outputs from our development experiments**.
+
+Think:
+
+> "Our laboratory notebook."
+
+It is different from `models/`.
+
+`models/` = trained models.
+
+`experiments/` = information about what we tried and how it performed.
+
+---
+
+## `experiments/data_profile.md`
+
+This came from Phase 1.
+
+It documents what we discovered about the dataset:
+
+```text
+Source 1 columns
+Source 2 columns
+Source 3 columns
+ID formats
+missing values
+ground-truth structure
+etc.
+```
+
+Why?
+
+Because later, when we're coding, we don't want to guess:
+
+> "Does Source 2 actually have a phone column?"
+
+We can refer to the actual data profile.
+
+---
+
+# `experiments/training_features/`
+
+This comes from Phase 4.
+
+This contains the **feature dataset used to train the model**.
+
+Conceptually:
+
+```text
+S1 ID
+Candidate ID
+name similarity
+address similarity
+phone similarity
+email similarity
+...
+actual_match
+```
+
+For example:
+
+| S1     | Candidate | Name | Address | Phone | Truth |
+| ------ | --------- | ---: | ------: | ----: | ----: |
+| S1-001 | S2-083    |  .94 |     .82 |     1 |     1 |
+| S1-001 | S2-147    |  .51 |     .30 |     0 |     0 |
+
+This is where the model gets its learning examples.
+
+---
+
+# `experiments/baseline_metrics.json`
+
+Generated by Phase 5.
+
+This is basically the **report card for the baseline model**.
+
+It might contain something like:
+
+```json
+{
+  "precision": 0.89,
+  "recall": 0.84,
+  "f1": 0.86,
+  "pr_auc": 0.91
+}
+```
+
+Those numbers are just examples.
+
+The actual values must come from your experiment.
+
+Why save them?
+
+So later we can compare:
+
+```text
+Baseline        Strong model
+   ↓                 ↓
+ metrics           metrics
+   ↓                 ↓
+         compare
+```
+
+---
+
+# `experiments/threshold_analysis.csv`
+
+This comes later, in Phase 7.
+
+It records what happened when we tried different thresholds.
+
+For example:
+
+| threshold | precision | recall |   F1 |
+| --------: | --------: | -----: | ---: |
+|      0.50 |      0.88 |   0.92 | 0.90 |
+|      0.60 |      0.91 |   0.89 | 0.90 |
+|      0.70 |      0.94 |   0.84 | 0.89 |
+|      0.80 |      0.97 |   0.73 | 0.83 |
+
+Again, those are **illustrative**, not your actual numbers.
+
+The purpose is to preserve the evidence for the threshold decision.
+
+---
+
+# `models/threshold.json`
+
+Also Phase 7.
+
+Once we've evaluated thresholds, we need to store the selected threshold somewhere so that the production pipeline doesn't randomly choose one later.
+
+For example:
+
+```json
+{
+  "threshold": 0.72
+}
+```
+
+Again, `0.72` is only an example.
+
+The actual value should come from your validation analysis.
+
+Then Phase 8 can do:
+
+```text
+model probability
+       ↓
+compare with saved threshold
+       ↓
+MATCH / NOT MATCH
+```
+
+---
+
+# `outputs/`
+
+This is different again.
+
+These are the **actual pipeline outputs**, especially the files relevant to submission.
+
+```text
+outputs/
+├── candidate_pairs.tsv
+└── matching_results.tsv
+```
+
+### `candidate_pairs.tsv`
+
+Produced by **Sneha's blocking/candidate-generation stage**.
+
+It says:
+
+> "For this S1 entity, these are the S2/S3 entities we are willing to consider."
+
+### `matching_results.tsv`
+
+Produced by **our matching stage**.
+
+It says:
+
+> "After scoring those candidates, this is the entity we selected as the match."
+
+---
+
+# 6. Put all the files together
+
+Now the whole project becomes much easier to understand:
+
+```text
+                    DATA
+                     │
+                     ▼
+              Phase 1 analysis
+                     │
+                     ▼
+            data_profile.md
+                     │
+                     ▼
+              Phase 2 normalize
+                     │
+                     ▼
+              Phase 3 features
+                     │
+                     ▼
+              Phase 4 labels
+                     │
+                     ▼
+         training_features/...
+                     │
+              ┌──────┴──────┐
+              ▼             ▼
+          Phase 5        Phase 6
+          BASELINE       STRONGER
+              │             │
+              ▼             ▼
+      baseline_model    entity_matcher
+              │             │
+              ▼             ▼
+      baseline_metrics    metrics
+              │             │
+              └──────┬──────┘
+                     │
+                 COMPARE
+                     │
+                     ▼
+                  Phase 7
+             threshold analysis
+                     │
+                     ▼
+              threshold.json
+                     │
+                     ▼
+                  Phase 8
+              final matcher
+                     │
+                     ▼
+          matching_results.tsv
+```
+
+---
+
+# 7. Why do we compare the two models?
+
+Because we're trying to answer a very specific question:
+
+> **Does the more complicated model actually improve entity matching on unseen validation entities?**
+
+We compare things like:
+
+| Metric    | Baseline | Stronger model |
+| --------- | -------: | -------------: |
+| Precision |        — |              — |
+| Recall    |        — |              — |
+| F1        |        — |              — |
+| PR-AUC    |        — |              — |
+
+The actual values should come from **your runs**, not from assumed numbers.
+
+And there is another important consideration: **model performance isn't the only thing that matters.**
+
+We also care about:
+
+* speed
+* memory usage
+* reproducibility
+* complexity
+* stability
+* behavior on difficult entities
+
+So if a sophisticated model barely improves the validation results while being much more complicated, that's useful information too.
+
+---
+
+## The simplest way to remember everything
+
+**Phase 4:**
+
+> Prepare examples with features + correct answers.
+
+**Phase 5:**
+
+> Build a simple model and establish a baseline.
+
+**Phase 6:**
+
+> Build a stronger model and see whether it improves on the baseline.
+
+**Phase 7:**
+
+> Decide how the model's probability becomes MATCH/NOT MATCH.
+
+**Phase 8:**
+
+> Apply the chosen model + threshold to the actual test candidates and create `matching_results.tsv`.
+
+And the folders are simply:
+
+```text
+models/       → trained brains
+experiments/  → experiment evidence/intermediate data
+outputs/      → final pipeline outputs
+```
+
+One important practical point: **we should not assume all of these files currently exist in your VS Code project just because they were in our planned architecture.** If you want, paste the current VS Code project tree (`models/`, `experiments/`, `outputs/`, etc.), and I can map **every file you actually have** to its phase and tell you whether anything is missing or unnecessary.
+----------
+Q] what is HistGradientClassifier, LightGBM , XGBoost Classifier models ?
+These are **three different machine-learning algorithms for classification**. In our project, they are being considered for the job:
+
+> **Given the similarity features of a candidate pair, predict whether the two records represent the same entity.**
+
+### 1. LightGBM
+
+**LightGBM** = **Light Gradient Boosting Machine**.
+
+It is a machine-learning library from Microsoft that provides **gradient-boosted decision-tree models**.
+
+Very simply:
+
+```text
+Your features
+(name similarity, address similarity, phone match, ...)
+              ↓
+       many decision trees
+              ↓
+       combined prediction
+              ↓
+       match probability
+```
+
+It is designed to be **fast and efficient**, particularly for large datasets.
+
+Example decision logic it can learn:
+
+```text
+Is phone an exact match?
+       │
+    YES│        NO
+       ↓         ↓
+Is name similarity   Is address similarity
+> 0.8?               very high?
+   │                    │
+   ↓                    ↓
+ likely match        ...
+```
+
+The actual LightGBM model learns these rules automatically rather than us writing them.
+
+---
+
+### 2. XGBoost
+
+**XGBoost** = **Extreme Gradient Boosting**.
+
+It is another very popular library implementing **gradient-boosted decision trees**.
+
+It works on the same general idea:
+
+```text
+Tree 1 → makes predictions
+Tree 2 → focuses on errors
+Tree 3 → focuses on remaining errors
+...
+       ↓
+combined model
+       ↓
+prediction
+```
+
+XGBoost and LightGBM are **different implementations of gradient boosting**.
+
+Both are commonly used for tabular data such as our similarity features.
+
+---
+
+### 3. `HistGradientBoostingClassifier`
+
+This one comes from **scikit-learn**, which your project already has installed.
+
+Full name:
+
+```python
+HistGradientBoostingClassifier
+```
+
+It is also a **gradient-boosted decision-tree classifier**.
+
+The important difference in your project is:
+
+```text
+LightGBM
+    ↓
+external library
+    ↓
+needs LightGBM installed
+
+XGBoost
+    ↓
+external library
+    ↓
+needs XGBoost installed
+
+HistGradientBoostingClassifier
+    ↓
+comes with scikit-learn
+    ↓
+already available
+```
+
+The **"Hist"** means it uses **histogram-based processing** when building the trees. Instead of considering every individual numerical value separately, it groups feature values into bins/histograms, which can make tree construction faster.
+
+---
+
+## Why is your code using HistGradientBoostingClassifier?
+
+The message you showed says:
+
+> "Neither LightGBM nor XGBoost is an installed dependency in this project."
+
+So whoever wrote that code checked the project's dependencies and found:
+
+```text
+LightGBM ❌
+XGBoost  ❌
+scikit-learn ✅
+```
+
+Rather than adding a new dependency, they used:
+
+```python
+from sklearn.ensemble import HistGradientBoostingClassifier
+```
+
+So your Phase 6 is effectively:
+
+```text
+Phase 5
+Baseline model
+       ↓
+simple reference
+       ↓
+       compare
+       ↑
+Phase 6
+HistGradientBoostingClassifier
+       ↓
+stronger tree-based model
+```
+
+---
+
+## Why is HistGradientBoosting considered the "stronger" model?
+
+Because our baseline and Phase 6 model are intended to have different modelling capabilities.
+
+A simple baseline might learn relatively straightforward relationships between the features.
+
+A gradient-boosted tree model can learn **nonlinear relationships and interactions**.
+
+For example, it could learn something like:
+
+```text
+IF
+    phone matches exactly
+AND
+    name similarity > 0.75
+AND
+    address similarity > 0.60
+
+THEN
+    very strong evidence of a match
+```
+
+It can also learn that:
+
+```text
+name similarity = 0.95
+```
+
+doesn't necessarily mean the same thing when:
+
+```text
+phone similarity = 0
+```
+
+versus:
+
+```text
+phone similarity = 1
+```
+
+The model learns those relationships from the training data.
+
+---
+
+## So do we NEED LightGBM or XGBoost?
+
+**No.**
+
+For your current project, if `scikit-learn` is already installed, `HistGradientBoostingClassifier` is a perfectly reasonable way to implement the Phase 6 tree-based model without adding another dependency.
+
+The architecture becomes:
+
+```text
+                Phase 4
+                   ↓
+          labelled features
+                   ↓
+          ┌────────┴────────┐
+          ↓                 ↓
+      Phase 5            Phase 6
+      Baseline       HistGradientBoosting
+          ↓                 ↓
+      Model A             Model B
+          └────────┬────────┘
+                   ↓
+               Compare
+                   ↓
+           validation results
+```
+
+If the Phase 6 model performs better on the validation data, it gives us evidence that the more sophisticated model is useful.
+
+If it doesn't, we shouldn't assume that "more complicated = better."
+
+### In one line:
+
+**LightGBM, XGBoost, and HistGradientBoostingClassifier are all tree-based boosting approaches; LightGBM and XGBoost require separate packages, while `HistGradientBoostingClassifier` is already part of scikit-learn and is therefore being used in your project without adding another dependency.**
+
+
+=========================================
+### Phase 7 : 
