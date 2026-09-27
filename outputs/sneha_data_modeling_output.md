@@ -48,3 +48,33 @@ Build the reproducible entity-matching pipeline that produces candidate matches 
 ===================================================================================
 ==================================================
                ### Implementation and Learnings / Doubts ###
+
+### Phase 2 : Designed the Blocking strategy :
+ Phase‑2 blocking design and bounded prototype are complete.
+
+  Created:
+
+  - [Blocking prototype](D:\Vai_Doc\Contests\Amazon ML Challenge Project\src\sneha\blocking_prototype.py)
+  - [Blocking design](D:\Vai_Doc\Contests\Amazon ML Challenge Project\experiments\sneha_blocking_design.md)
+  - [Measured subset results](D:\Vai_Doc\Contests\Amazon ML Challenge
+    Project\experiments\sneha_blocking_subset_metrics.json)
+
+  Measured on a deterministic train-only subset:
+
+  - Source‑1 entities: 2,167
+  - True links: 7,545
+  - Candidate pairs: 14,820,048
+  - Average candidates/S1: 6,838.97
+  - Maximum candidates/S1: 62,012
+  - True links retrieved: 6,189
+  - Candidate recall: 82.03%
+  - Comparison reduction: 1,509× versus the subset Cartesian space
+
+  The first-pass union used normalized country with exact name, token-order-invariant name, four-character compact-name
+  prefix, and exact address. The report explicitly rejects this as a production configuration: 82.03% recall is
+  insufficient and the broad prefix rule produces too many candidates.
+
+  Proposed next architecture: a disk-backed, frequency-aware inverted index with selective exact keys, bounded rare
+  name-token keys, bounded address-number fallbacks, deterministic ordering/deduplication, and train-only retrieval-
+  recall tuning. No model training, matching, probabilities, test-ground-truth use, or full test candidate_pairs.tsv
+  generation was performed.
