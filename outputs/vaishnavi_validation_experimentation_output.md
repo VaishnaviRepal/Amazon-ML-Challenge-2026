@@ -733,3 +733,535 @@ Data scientists and programmers often prefer TSV over CSV for one big reason: Te
 
 ### Phase 5 : Baseline Matching Model(the simplest form / model )
 --Read about it above as the answer of above q contains the soln  .
+--• Baseline model trained and artifacts saved:
+
+  - [Model](D:\Vai_Doc\Contests\Amazon ML Challenge Project\models\baseline_model.joblib)
+  - [Metrics](D:\Vai_Doc\Contests\Amazon ML Challenge Project\experiments\baseline_metrics.json)
+  - [Threshold analysis](D:\Vai_Doc\Contests\Amazon ML Challenge Project\experiments\baseline_thresholds.csv)
+  - [Training script](D:\Vai_Doc\Contests\Amazon ML Challenge Project\src\vaishnavi\train_baseline.py)
+
+  Validation uses a GroupShuffleSplit by source1_entity_id, with zero Source‑1 overlap between training and validation.
+  Thresholds are selected for validation F1—not accuracy—and the methodology is documented in both the script and
+  metrics JSON.
+
+  Validation results:
+
+  - Weighted similarity: precision 0.9592, recall 0.8769, F1 0.9162, PR-AUC 0.9618
+  - Logistic Regression: precision 0.9808, recall 0.9669, F1 0.9738, PR-AUC 0.9937
+==========
+Q]Tell me what does this mean ? what is group_shuffle_Split and source1_entity_id ? where are they taken from ? why and how are they used ? How and why are threshold selected based on F1 ? What is validation and training and how are they working together in phase 5 ?
+
+->Yes. These terms are all connected, so let’s break down **Phase 5 from the beginning** and show exactly where each thing comes from.
+
+## 1. What is `source1_entity_id`?
+
+`source1_entity_id` is simply the **ID of a business/entity in Source 1**.
+
+It comes directly from the challenge's Source 1 data.
+
+For example, your data may conceptually look like:
+
+```text
+source1_entity_id    name             address
+S1-001               ABC Pvt Ltd      Mumbai
+S1-002               XYZ Stores       Pune
+```
+
+So:
+
+```text
+source1_entity_id = S1-001
+```
+
+means:
+
+> "This particular entity/record came from Source 1."
+
+We use this ID throughout the pipeline because **Source 1 is the entity for which we are trying to find the corresponding Source 2/3 record.**
+
+---
+
+# 2. Why is `source1_entity_id` important in Phase 5?
+
+Suppose we have:
+
+```text
+S1-001 → S2-083
+S1-001 → S2-147
+S1-001 → S3-021
+```
+
+These are three candidate pairs for the **same Source 1 entity**.
+
+Their features might be:
+
+| S1     | Candidate | Name sim | Address sim | Phone |
+| ------ | --------- | -------: | ----------: | ----: |
+| S1-001 | S2-083    |      .94 |         .82 |     1 |
+| S1-001 | S2-147    |      .51 |         .30 |     0 |
+| S1-001 | S3-021    |      .97 |         .91 |     1 |
+
+The model must learn from these examples.
+
+But we also need to know:
+
+> **Which rows belong to the same original Source 1 entity?**
+
+That's where `source1_entity_id` becomes important.
+
+---
+
+# 3. What is `GroupShuffleSplit`?
+
+This is a way of splitting the training data into **training data and validation data**.
+
+Normally, you might randomly split rows:
+
+```text
+80% → training
+20% → validation
+```
+
+But there's a problem with entity resolution.
+
+Remember:
+
+```text
+S1-001 → S2-083
+S1-001 → S2-147
+S1-001 → S3-021
+```
+
+These three rows are related because they all belong to **S1-001**.
+
+If we randomly split individual rows, we could accidentally get:
+
+```text
+TRAIN:
+S1-001 → S2-083
+S1-001 → S2-147
+
+VALIDATION:
+S1-001 → S3-021
+```
+
+Now the model has already seen S1-001 during training.
+
+That's called **data leakage** in this context.
+
+The validation score can look better than it really is because the model is being evaluated on an entity it has already encountered.
+
+---
+
+# 4. What does `GroupShuffleSplit` do?
+
+Instead of splitting individual rows, we tell it:
+
+> "Keep all rows belonging to the same `source1_entity_id` together."
+
+So we might get:
+
+```text
+TRAINING
+
+S1-001 → S2-083
+S1-001 → S2-147
+S1-001 → S3-021
+
+S1-002 → S2-055
+S1-002 → S3-090
+...
+```
+
+and:
+
+```text
+VALIDATION
+
+S1-101 → S2-500
+S1-101 → S3-620
+
+S1-102 → S2-710
+...
+```
+
+Notice:
+
+**No S1 entity appears in both groups.**
+
+That's what `GroupShuffleSplit` is helping us achieve.
+
+---
+
+# 5. Where does `source1_entity_id` come from?
+
+It isn't something we invented for Phase 5.
+
+It comes from the **entity IDs already present in the challenge data**, and it is also part of the required submission structure.
+
+The general chain is:
+
+```text
+Original Source 1 data
+        ↓
+source1_entity_id
+        ↓
+candidate pairs
+        ↓
+features
+        ↓
+training dataset
+        ↓
+Phase 5
+```
+
+So when Phase 5 says:
+
+```python
+groups = training_data["source1_entity_id"]
+```
+
+it basically means:
+
+> "Use each Source 1 entity as the grouping unit when creating the train/validation split."
+
+---
+
+# 6. Now: what are Training and Validation?
+
+This is the most important part.
+
+Imagine we have **10,000 labelled candidate pairs**.
+
+We don't want to train the model on all 10,000 and then ask:
+
+> "How good is the model?"
+
+Because the model has already seen all the answers.
+
+Instead we divide the data:
+
+```text
+10,000 labelled examples
+          ↓
+     split into
+     /          \
+TRAINING       VALIDATION
+   80%             20%
+```
+
+### Training data
+
+The model **learns from this**.
+
+For example:
+
+```text
+Features                         Answer
+name=.95, address=.90, phone=1    MATCH
+name=.40, address=.20, phone=0    NOT MATCH
+name=.88, address=.85, phone=1    MATCH
+```
+
+The model learns patterns connecting:
+
+```text
+features → match/not match
+```
+
+### Validation data
+
+The model **doesn't learn from this**.
+
+We use it afterward to ask:
+
+> "Now that you've learned from the training examples, how well do you perform on examples you didn't train on?"
+
+That's what validation measures.
+
+---
+
+# 7. So what exactly happens in Phase 5?
+
+Conceptually:
+
+```text
+             Phase 4 output
+                   ↓
+        labelled feature dataset
+                   ↓
+          GroupShuffleSplit
+             /           \
+            /             \
+       TRAINING        VALIDATION
+           ↓                ↓
+      Train model       Keep hidden
+           ↓                ↓
+           └──────┬─────────┘
+                  ↓
+          Evaluate model
+                  ↓
+       precision / recall / F1
+```
+
+The model learns **only from the training portion**.
+
+Then we use the validation portion to evaluate it.
+
+---
+
+# 8. What does the model actually predict?
+
+Suppose the validation data contains:
+
+```text
+S1-100 ↔ S2-500
+```
+
+The model looks at its features:
+
+```text
+name_similarity = 0.93
+address_similarity = 0.88
+phone_similarity = 1.0
+...
+```
+
+and might output:
+
+```text
+match_probability = 0.96
+```
+
+Another pair:
+
+```text
+S1-100 ↔ S2-700
+```
+
+might produce:
+
+```text
+match_probability = 0.31
+```
+
+So the model is producing a **score/probability**, not necessarily a final match yet.
+
+---
+
+# 9. Now where does F1 come in?
+
+We need to convert the model's continuous score into:
+
+```text
+MATCH
+or
+NOT MATCH
+```
+
+Suppose the model outputs:
+
+```text
+0.96
+0.83
+0.61
+0.44
+0.20
+```
+
+We need a **threshold**.
+
+If threshold = `0.50`:
+
+```text
+0.96 → MATCH
+0.83 → MATCH
+0.61 → MATCH
+0.44 → NOT MATCH
+0.20 → NOT MATCH
+```
+
+If threshold = `0.80`:
+
+```text
+0.96 → MATCH
+0.83 → MATCH
+0.61 → NOT MATCH
+0.44 → NOT MATCH
+0.20 → NOT MATCH
+```
+
+Changing the threshold changes how many things we call matches.
+
+---
+
+# 10. Why use F1 to help choose the threshold?
+
+Because there are two things we care about:
+
+**Precision:**
+When we say "match", how often are we correct?
+
+**Recall:**
+Of the actual matches, how many did we find?
+
+They can conflict.
+
+For example:
+
+### Very high threshold
+
+```text
+threshold = 0.95
+```
+
+We might make very few matches.
+
+Those matches may be highly reliable → high precision.
+
+But we could miss many genuine matches → low recall.
+
+### Very low threshold
+
+```text
+threshold = 0.40
+```
+
+We might find many genuine matches → high recall.
+
+But we may also incorrectly match unrelated businesses → lower precision.
+
+---
+
+# 11. F1 balances precision and recall
+
+F1 is calculated from precision and recall:
+
+$$
+F1 = 2 \times \frac{Precision \times Recall}{Precision + Recall}
+$$
+
+So during threshold tuning, we can test:
+
+| Threshold | Precision | Recall |   F1 |
+| --------: | --------: | -----: | ---: |
+|      0.50 |      0.88 |   0.92 | 0.90 |
+|      0.60 |      0.91 |   0.89 | 0.90 |
+|      0.70 |      0.94 |   0.84 | 0.89 |
+|      0.80 |      0.97 |   0.73 | 0.83 |
+
+These numbers are **illustrative**, not your actual results.
+
+We then have evidence about how the model behaves at different thresholds.
+
+---
+
+# 12. So did we get the threshold from somewhere?
+
+**No fixed threshold should be assumed.**
+
+If our Phase 5/6 code currently says something like:
+
+```python
+threshold = 0.5
+```
+
+that is merely a **starting/default classification threshold**, not a scientifically selected final threshold.
+
+The proper process is:
+
+```text
+Train model
+     ↓
+Generate predictions on VALIDATION data
+     ↓
+Try multiple thresholds
+     ↓
+Calculate precision / recall / F1
+     ↓
+Examine the results
+     ↓
+Choose/document an appropriate threshold
+     ↓
+Use that threshold on TEST candidates
+```
+
+That is why we had a separate **Phase 7: threshold tuning**.
+
+---
+
+# 13. One subtle but VERY important point
+
+We should **not blindly say "choose the threshold with the highest F1" and stop there**.
+
+For this challenge, the candidate-generation stage also matters, and the final matching behavior matters.
+
+For example, we should inspect:
+
+* precision
+* recall
+* F1
+* false positives
+* false negatives
+* how many Source 1 entities get zero matches
+* how many get multiple matches
+* whether the selected candidate is actually in `candidate_pairs.tsv`
+
+So F1 is a **useful criterion**, not the entire definition of a good final solution.
+
+---
+
+# 14. The whole Phase 5 in one picture
+
+```text
+                 PHASE 4
+        Labelled feature dataset
+                  │
+                  │
+                  ▼
+       ┌─────────────────────┐
+       │ source1_entity_id   │
+       │ used as GROUP       │
+       └──────────┬──────────┘
+                  │
+                  ▼
+        GroupShuffleSplit
+                  │
+          ┌───────┴────────┐
+          ▼                ▼
+      TRAINING          VALIDATION
+          │                │
+          │                │
+          ▼                │
+     Train ML model        │
+          │                │
+          └───────┬────────┘
+                  ▼
+         Model predicts
+         match probabilities
+                  │
+                  ▼
+       Evaluate on validation
+                  │
+          ┌───────┼────────┐
+          ▼       ▼        ▼
+      Precision Recall     F1
+                  │
+                  ▼
+             Phase 7
+       threshold analysis
+                  │
+                  ▼
+         Final threshold
+                  │
+                  ▼
+             Phase 8
+       actual TEST matching
+                  │
+                  ▼
+        matching_results.tsv
+```
+
+### In one sentence:
+
+**`source1_entity_id` tells us which rows belong to the same Source 1 entity; `GroupShuffleSplit` keeps those entities separated between training and validation; training teaches the model, validation tests it on unseen entities; and threshold tuning converts the model's probability into a final match/not-match decision, with F1 being one important measure used to compare thresholds.**
