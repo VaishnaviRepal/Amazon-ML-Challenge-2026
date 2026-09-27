@@ -43,3 +43,8 @@ Build the reproducible entity-matching pipeline that produces candidate matches 
 - It never compares a test row against itself or uses `train_ground_truth.tsv` during test scoring.
 - It produces scores for Source 1 to Source 2 and Source 1 to Source 3 candidates.
 - The generated candidate file can be converted to the final submission by applying a threshold selected only on validation data.
+
+==================================================
+===================================================================================
+==================================================
+               ### Implementation and Learnings / Doubts ###

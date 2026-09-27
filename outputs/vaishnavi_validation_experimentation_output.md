@@ -2023,6 +2023,7 @@ versus:
 phone similarity = 1
 ```
 
+
 The model learns those relationships from the training data.
 
 ---
